@@ -1,0 +1,49 @@
+# 宝塔面板 Nginx 伪静态规则
+# 位置：站点 → 设置 → 伪静态，把下面内容贴进去
+# ============================================================================
+
+# 禁止访问敏感文件（双保险：即使站点根目录配错了也能挡住）
+location ~* \.(ini|log|sql|sqlite|db|md|lock|bak|old|orig|sh|yml|yaml)$ {
+    deny all;
+    return 404;
+}
+
+# 隐藏 dotfiles（.git / .env 等）
+location ~ /\. {
+    deny all;
+    return 404;
+}
+
+# PHP 处理
+location ~ \.php(/|$) {
+    # ★ 关键：只允许执行 public/ 下的 PHP 文件。
+    #   若站点根目录被误设为项目根，这一条能挡住 app/ config/ 被直接执行。
+    #   fastcgi_split_path_info 已由宝塔默认配置处理，这里只加白名单限制。
+    include fastcgi_params;
+    fastcgi_pass unix:/tmp/php-cgi-83.sock;   # ← 按实际 PHP 版本调整
+    fastcgi_index index.php;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+}
+
+# 静态资源缓存
+location ~* \.(css|js|svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf)$ {
+    expires 7d;
+    add_header Cache-Control "public, max-age=604800";
+    try_files $uri =404;
+}
+
+# ★ 核心：所有未匹配到真实文件的请求都交给入口
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
+
+# 安全响应头（与应用层设置一致，双保险）
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+# 关掉目录列表
+autoindex off;
+
+# 上传体积（后台不需要传大文件，但留点余量）
+client_max_body_size 10m;
